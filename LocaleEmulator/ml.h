@@ -21559,6 +21559,15 @@ NtGdiHfontCreate(
     return 0;
 }
 
+inline
+ULONG
+NTAPI
+NtGdiQueryFontAssocInfo(
+    IN HDC hdc
+)
+{
+    return 0;
+}
 
 #if ML_USER_MODE
 

@@ -571,6 +571,7 @@ public:
         API_POINTER(DeleteObject)               StubDeleteObject;
         API_POINTER(CreateFontIndirectExW)      StubCreateFontIndirectExW;
         API_POINTER(NtGdiHfontCreate)           StubNtGdiHfontCreate;
+        API_POINTER(NtGdiQueryFontAssocInfo)    StubNtGdiQueryFontAssocInfo;
         API_POINTER(CreateCompatibleDC)         StubCreateCompatibleDC;
         API_POINTER(EnumFontsA)                 StubEnumFontsA;
         API_POINTER(EnumFontsW)                 StubEnumFontsW;

@@ -746,6 +746,20 @@ LeNtGdiHfontCreate(
     return GlobalData->HookStub.StubNtGdiHfontCreate(EnumLogFont, SizeOfEnumLogFont, LogFontType, Unknown, FreeListLocalFont);
 }
 
+ULONG
+NTAPI
+LeNtGdiQueryFontAssocInfo(
+    HDC hdc
+)
+{
+    PLeGlobalData GlobalData = LeGetGlobalData();
+    if (hdc == nullptr && GlobalData->GetLeb()->LocaleID == 0x411) {
+        // set font associnfo to null when locale is ja for handling waffle game crash
+        return 0;
+    }
+    return GlobalData->HookStub.StubNtGdiQueryFontAssocInfo(hdc);
+}
+
 API_POINTER(SelectObject)  StubSelectObject;
 
 HGDIOBJ NTAPI LeSelectObject(HDC hdc, HGDIOBJ h)
@@ -823,25 +837,18 @@ PVOID FindNtGdiHfontCreate(PVOID Gdi32)
 
 NTSTATUS LeGlobalData::HookGdi32Routines(PVOID Gdi32)
 {
-    PVOID NtGdiHfontCreate, Fms;
+    PVOID NtGdiHfontCreate, Fms, NtGdiQueryFontAssocInfo;
 
     *(PVOID *)&GdiGetCodePage = GetRoutineAddress(Gdi32, "GdiGetCodePage");
 
-    if (this->HasWin32U)
-    {
-        HMODULE Win32uMod = (HMODULE)Nt_GetModuleHandle(L"win32u.dll");
-        if (Win32uMod == nullptr)
-            return STATUS_NOT_FOUND;
-        NtGdiHfontCreate = Nt_GetProcAddress(Win32uMod, "NtGdiHfontCreate");
-        if (!NtGdiGetGlyphOutline)
-            return STATUS_NOT_FOUND;
-    }
-    else
-    {
-        NtGdiHfontCreate = FindNtGdiHfontCreate(Gdi32);
-        if (NtGdiHfontCreate == nullptr)
-            return STATUS_NOT_FOUND;
-    }
+    // drop support for windows 10.0.14295 or lower
+    HMODULE Win32uMod = (HMODULE)Nt_GetModuleHandle(L"win32u.dll");
+    if (!Win32uMod)
+        return STATUS_NOT_FOUND;
+    NtGdiHfontCreate = Nt_GetProcAddress(Win32uMod, "NtGdiHfontCreate");
+    NtGdiQueryFontAssocInfo = Nt_GetProcAddress(Win32uMod, "NtGdiQueryFontAssocInfo");
+    if (!NtGdiHfontCreate || !NtGdiQueryFontAssocInfo)
+        return STATUS_NOT_FOUND;
 
     RtlInitializeCriticalSectionAndSpinCount(&HookRoutineData.Gdi32.GdiLock, 4000);
 
@@ -871,6 +878,7 @@ NTSTATUS LeGlobalData::HookGdi32Routines(PVOID Gdi32)
         LeHookFromEAT(Gdi32, GDI32, EnumFontFamiliesExW),
 
         LeFunctionJump(NtGdiHfontCreate),
+        LeFunctionJump(NtGdiQueryFontAssocInfo),
 
         //Mp::MemoryPatchVa((ULONG_PTR)LeFmsEnumFontFamiliesExW, sizeof(ULONG_PTR), LookupImportTable(Fms, "GDI32.dll", GDI32_EnumFontFamiliesExW)),
 
