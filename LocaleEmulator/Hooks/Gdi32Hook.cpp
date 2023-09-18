@@ -830,6 +830,33 @@ PVOID FindNtGdiHfontCreate(PVOID Gdi32)
     return NtGdiHfontCreate;
 }
 
+PVOID FindNtGdiQueryFontAssocInfo(PVOID Gdi32)
+{
+    PVOID GetFontAssocStatus, NtGdiQueryFontAssocInfo;
+
+    GetFontAssocStatus = LookupExportTable(Gdi32, GDI32_GetFontAssocStatus);
+
+    NtGdiQueryFontAssocInfo = WalkOpCodeT(GetFontAssocStatus, 0x20,
+                            WalkOpCodeM(Buffer, OpLength, Ret)
+                            {
+                                switch (Buffer[0])
+                                {
+                                    case JUMP:
+                                        Buffer = GetCallDestination(Buffer);
+                                        if (IsSystemCall(Buffer) == FALSE)
+                                            break;
+
+                                        Ret = Buffer;
+                                        //return STATUS_SUCCESS;
+                                        break;
+                                }
+
+                                return STATUS_NOT_FOUND;
+                            }
+                        );
+
+    return NtGdiQueryFontAssocInfo;
+}
 
 /************************************************************************
   init end
@@ -841,14 +868,23 @@ NTSTATUS LeGlobalData::HookGdi32Routines(PVOID Gdi32)
 
     *(PVOID *)&GdiGetCodePage = GetRoutineAddress(Gdi32, "GdiGetCodePage");
 
-    // drop support for windows 10.0.14295 or lower
-    HMODULE Win32uMod = (HMODULE)Nt_GetModuleHandle(L"win32u.dll");
-    if (!Win32uMod)
-        return STATUS_NOT_FOUND;
-    NtGdiHfontCreate = Nt_GetProcAddress(Win32uMod, "NtGdiHfontCreate");
-    NtGdiQueryFontAssocInfo = Nt_GetProcAddress(Win32uMod, "NtGdiQueryFontAssocInfo");
-    if (!NtGdiHfontCreate || !NtGdiQueryFontAssocInfo)
-        return STATUS_NOT_FOUND;
+    if (this->HasWin32U)
+    {
+        HMODULE Win32uMod = (HMODULE)Nt_GetModuleHandle(L"win32u.dll");
+        if (!Win32uMod)
+            return STATUS_NOT_FOUND;
+        NtGdiHfontCreate = Nt_GetProcAddress(Win32uMod, "NtGdiHfontCreate");
+        NtGdiQueryFontAssocInfo = Nt_GetProcAddress(Win32uMod, "NtGdiQueryFontAssocInfo");
+        if (!NtGdiHfontCreate || !NtGdiQueryFontAssocInfo)
+            return STATUS_NOT_FOUND;
+    }
+    else
+    {
+        NtGdiHfontCreate = FindNtGdiHfontCreate(Gdi32);
+        NtGdiQueryFontAssocInfo = FindNtGdiQueryFontAssocInfo(Gdi32);
+        if (!NtGdiHfontCreate || !NtGdiQueryFontAssocInfo)
+            return STATUS_NOT_FOUND;
+    }
 
     RtlInitializeCriticalSectionAndSpinCount(&HookRoutineData.Gdi32.GdiLock, 4000);
 
